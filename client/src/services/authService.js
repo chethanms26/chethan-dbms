@@ -1,44 +1,61 @@
 // client/src/services/authService.js
-// FINAL VERSION: Corrected default export structure to satisfy build rules.
 
-import api from './api'; 
+import api from './api';
 
+// ----------------------------
+// LOGIN FUNCTION
+// ----------------------------
 const login = async (username, password) => {
     try {
         const response = await api.post('/auth/login', { username, password });
-        
-        if (response.data.success && response.data.token) {
-            const { token, user } = response.data;
-            
-            // Store JWT and User Role for session management
-            localStorage.setItem('token', token);
-            localStorage.setItem('user', JSON.stringify(user));
 
-            return user;
+        if (response.data.success && response.data.token && response.data.user) {
+            const { token, user } = response.data;
+
+            // Enforce structure → avoids "Admin User" bug
+            const fullUser = {
+                username: user.username,
+                role: user.role,
+                id: user.id || null
+            };
+
+            // Save token + user object
+            localStorage.setItem('token', token);
+            localStorage.setItem('user', JSON.stringify(fullUser));
+
+            return fullUser;
         }
+
         return null;
+
     } catch (error) {
-        // Log the detailed error
         console.error("Login API Error:", error.response ? error.response.data : error.message);
         throw error;
     }
 };
 
+// ----------------------------
+// LOGOUT FUNCTION
+// ----------------------------
 const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
 };
 
+// ----------------------------
+// LOAD CURRENT USER
+// ----------------------------
 const getCurrentUser = () => {
     const user = localStorage.getItem('user');
     return user ? JSON.parse(user) : null;
 };
 
-// CRITICAL: A service file must be defined for fetching complex data
+// ----------------------------
+// DASHBOARD DATA (SINGLE API)
+// ----------------------------
 const getDashboardData = async () => {
     try {
-        // This is the single API call that runs the Promise.all metrics
-        const response = await api.get('/dashboard'); 
+        const response = await api.get('/dashboard');
         return response.data.data;
     } catch (error) {
         console.error("Dashboard Load Error:", error);
@@ -46,8 +63,9 @@ const getDashboardData = async () => {
     }
 };
 
-
-// --- FIX: Assign to a constant before default export ---
+// ----------------------------
+// EXPORT SERVICE
+// ----------------------------
 const AuthService = {
     login,
     logout,

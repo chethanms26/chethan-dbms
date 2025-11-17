@@ -1,4 +1,3 @@
-// client/src/pages/Login.jsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import authService from '../services/authService';
@@ -15,48 +14,67 @@ const Login = ({ setUser }) => {
 
         try {
             const user = await authService.login(username, password);
-            if (user) {
-                // Set user context and navigate based on role
+
+            if (user && user.role) {
                 setUser(user);
-                
-                // 🎯 RBAC NAVIGATION: Directing users to their specific entry point
-                if (user.role === 'ADMIN') {
-                    navigate('/dashboard');
-                } else if (user.role === 'SUPPLIER') {
-                    navigate('/supplier-portal'); // Navigate to a dedicated supplier page
-                } else if (user.role === 'CUSTOMER') {
-                    navigate('/orders');
-                }
+
+                if (user.role === 'ADMIN') navigate('/dashboard');
+                else if (user.role === 'SUPPLIER') navigate('/supplier-portal');
+                else if (user.role === 'CUSTOMER') navigate('/orders');
+                else navigate('/dashboard');
             } else {
-                setError('Login failed. Check credentials.');
+                setError('Invalid username or password.');
             }
         } catch (err) {
-            setError('Login failed. Check server status or credentials.');
+            setError('Login failed. Please check server or credentials.');
         }
     };
 
     return (
-        <div className="login-container">
-            <h2>SCM Portal Login</h2>
-            <p>Use roles: admin / supplier / customer (password: DBMS@pesu2025)</p>
-            <form onSubmit={handleSubmit}>
-                <input
-                    type="text"
-                    placeholder="Username (e.g., admin)"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    required
-                />
-                <input
-                    type="password"
-                    placeholder="Password (DBMS@pesu2025)"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                />
-                <button type="submit">Log In</button>
-            </form>
-            {error && <p className="error-message">{error}</p>}
+        <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
+            <div className="bg-white shadow-xl rounded-xl p-8 w-full max-w-md">
+                <h2 className="text-2xl font-bold text-gray-800 text-center mb-3">
+                    SCM Portal Login
+                </h2>
+
+                <p className="text-sm text-gray-600 text-center mb-6">
+                    Roles: <b>admin / supplier / customer</b><br />
+                    Password: <b>DBMS@pesu2025</b>
+                </p>
+
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <input
+                        type="text"
+                        placeholder="Username"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                    />
+
+                    <input
+                        type="password"
+                        placeholder="Password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                    />
+
+                    <button
+                        type="submit"
+                        className="w-full bg-blue-600 text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition"
+                    >
+                        Log In
+                    </button>
+                </form>
+
+                {error && (
+                    <p className="mt-4 text-center text-red-600 font-medium">
+                        {error}
+                    </p>
+                )}
+            </div>
         </div>
     );
 };

@@ -1,112 +1,89 @@
 // server/models/Dashboard.js
-// FINAL VERSION — LIMIT FIX APPLIED (No prepared LIMIT ?)
-
 const db = require('../config/database');
 
 class Dashboard {
 
-  static async executeSelect(sql, values = []) {
-    try {
-      const finalValues = Array.isArray(values) ? values : [values];
-      const [rows] = await db.execute(sql, finalValues);
-      return rows;
-    } catch (error) {
-      console.error('Dashboard Model Query Failed:', error);
-      throw new Error('Database query failed: ' + error.message);
-    }
+  static async execute(sql, params = []) {
+    const [rows] = await db.execute(sql, params);
+    return rows;
   }
 
-  // 1. Overall stats
+  // -----------------------------
+  // 1) Overall Stats
+  // -----------------------------
   static async getOverallStats() {
-    const query = `
+    const sql = `
       SELECT 
         (SELECT COUNT(*) FROM customer) AS total_customers,
         (SELECT COUNT(*) FROM product) AS total_products,
         (SELECT COUNT(*) FROM \`order\`) AS total_orders,
         (SELECT COUNT(*) FROM \`order\` WHERE status = 'Pending') AS pending_orders,
         (SELECT COUNT(*) FROM \`order\` WHERE status = 'Delivered') AS delivered_orders,
-        (SELECT COALESCE(SUM(total_amount), 0) FROM \`order\` WHERE status != 'Cancelled') AS total_revenue,
-        (SELECT COALESCE(AVG(total_amount), 0) FROM \`order\` WHERE status != 'Cancelled') AS avg_order_value,
-        (SELECT COUNT(DISTINCT product_id) FROM inventory WHERE quantity <= reorder_level) AS low_stock_items,
+        (SELECT COALESCE(SUM(total_amount),0) FROM \`order\` WHERE status != 'Cancelled') AS total_revenue,
+        (SELECT COALESCE(AVG(total_amount),0) FROM \`order\` WHERE status != 'Cancelled') AS avg_order_value,
+        (SELECT COUNT(*) FROM inventory WHERE quantity <= reorder_level) AS low_stock_items,
         (SELECT COUNT(*) FROM shipment WHERE status = 'In Transit') AS active_shipments
     `;
-    const [rows] = await db.execute(query);
+    const rows = await this.execute(sql);
     return rows[0];
   }
 
-  // 2. Recent Orders (FIXED LIMIT)
+  // -----------------------------
+  // 2) Recent Orders
+  // -----------------------------
   static async getRecentOrders(limit = 10) {
-    limit = Number(limit) || 10;
-    const query = `
+    const sql = `
       SELECT 
         o.order_id,
-        o.date,
+        o.order_date AS date,
         o.total_amount,
         o.status,
         o.priority,
-        c.name AS customer_name,
-        s.tracking_number
+        c.name AS customer_name
       FROM \`order\` o
-      JOIN customer c ON o.customer_id = c.customer_id
-      LEFT JOIN shipment s ON o.order_id = s.order_id
-      ORDER BY o.date DESC
-      LIMIT ${limit}
+      LEFT JOIN customer c ON o.customer_id = c.customer_id
+      ORDER BY o.order_date DESC
+      LIMIT ${Number(limit)}
     `;
-    return this.executeSelect(query);
+    return this.execute(sql);
   }
 
-  // 3. Top Products (FIXED LIMIT)
+  // -----------------------------
+  // 3) Top Products (highest price)
+  // -----------------------------
   static async getTopProducts(limit = 10) {
-    limit = Number(limit) || 10;
-    const query = `
-      SELECT *
-      FROM (
-        SELECT 
-          p.product_id,
-          p.name,
-          p.category,
-          p.unit_price,
-          get_product_sales_count(p.product_id) AS units_sold,
-          get_product_sales_count(p.product_id) * p.unit_price AS total_revenue
-        FROM product p
-      ) AS t
-      ORDER BY t.units_sold DESC
-      LIMIT ${limit}
+    const sql = `
+      SELECT product_id, name, category, unit_price
+      FROM product
+      ORDER BY unit_price DESC
+      LIMIT ${Number(limit)}
     `;
-    return this.executeSelect(query);
+    return this.execute(sql);
   }
 
-  // 4. Top Customers (FIXED LIMIT)
+  // -----------------------------
+  // 4) Top Customers (most orders)
+  // -----------------------------
   static async getTopCustomers(limit = 10) {
-    limit = Number(limit) || 10;
-    const query = `
-      SELECT *
-      FROM (
-        SELECT 
-          c.customer_id,
-          c.name,
-          c.email,
-          get_customer_lifetime_value(c.customer_id) AS lifetime_value,
-          is_customer_vip(c.customer_id) AS is_vip,
-          COUNT(o.order_id) AS total_orders
-        FROM customer c
-        LEFT JOIN \`order\` o ON c.customer_id = o.customer_id
-        GROUP BY c.customer_id, c.name, c.email
-      ) AS t
-      ORDER BY t.lifetime_value DESC
-      LIMIT ${limit}
+    const sql = `
+      SELECT c.customer_id, c.name, c.email,
+             COUNT(o.order_id) AS total_orders
+      FROM customer c
+      LEFT JOIN \`order\` o ON c.customer_id = o.customer_id
+      GROUP BY c.customer_id
+      ORDER BY total_orders DESC
+      LIMIT ${Number(limit)}
     `;
-    return this.executeSelect(query);
+    return this.execute(sql);
   }
 
-  // 5. Revenue by category
+  // -----------------------------
+  // 5) Revenue by Category
+  // -----------------------------
   static async getRevenueByCategory() {
-    const query = `
-      SELECT 
-        p.category,
-        COUNT(DISTINCT o.order_id) AS order_count,
-        SUM(ol.quantity) AS units_sold,
-        SUM(ol.quantity * ol.price) AS total_revenue
+    const sql = `
+      SELECT p.category,
+             SUM(ol.quantity * ol.price) AS total_revenue
       FROM order_line ol
       JOIN product p ON ol.product_id = p.product_id
       JOIN \`order\` o ON ol.order_id = o.order_id
@@ -114,86 +91,70 @@ class Dashboard {
       GROUP BY p.category
       ORDER BY total_revenue DESC
     `;
-    return this.executeSelect(query);
+    return this.execute(sql);
   }
 
-  // 6. Order distribution
+  // -----------------------------
+  // 6) Order Status Distribution
+  // -----------------------------
   static async getOrderStatusDistribution() {
-    return this.executeSelect(`
-      SELECT 
-        status,
-        COUNT(*) AS count,
-        ROUND(COUNT(*) * 100 / (SELECT COUNT(*) FROM \`order\`), 2) AS percentage
+    const sql = `
+      SELECT status, COUNT(*) AS count
       FROM \`order\`
       GROUP BY status
-      ORDER BY count DESC
-    `);
-  }
-
-  // 7. Daily Revenue (FIXED LIMIT)
-  static async getDailyRevenue(days = 30) {
-    days = Number(days) || 30;
-    const query = `
-      SELECT 
-        DATE(o.date) AS order_date,
-        COUNT(o.order_id) AS order_count,
-        COALESCE(SUM(o.total_amount), 0) AS daily_revenue
-      FROM \`order\` o
-      WHERE o.date >= DATE_SUB(CURDATE(), INTERVAL ${days} DAY)
-        AND o.status != 'Cancelled'
-      GROUP BY DATE(o.date)
-      ORDER BY order_date DESC
     `;
-    return this.executeSelect(query);
+    return this.execute(sql);
   }
 
-  // 8. Warehouse utilization
+  // -----------------------------
+  // 7) Daily Revenue (last X days)
+  // -----------------------------
+  static async getDailyRevenue(days = 30) {
+    const sql = `
+      SELECT DATE(order_date) AS date,
+             SUM(total_amount) AS daily_revenue
+      FROM \`order\`
+      WHERE order_date >= DATE_SUB(CURDATE(), INTERVAL ${Number(days)} DAY)
+        AND status != 'Cancelled'
+      GROUP BY DATE(order_date)
+      ORDER BY date DESC
+    `;
+    return this.execute(sql);
+  }
+
+  // -----------------------------
+  // 8) Warehouse Utilization
+  // -----------------------------
   static async getWarehouseUtilization() {
-    return this.executeSelect(`
-      SELECT 
-        w.warehouse_id,
-        w.name,
-        w.location,
-        w.capacity,
-        calculate_warehouse_utilization(w.warehouse_id) AS utilization_percent,
-        COUNT(i.product_id) AS product_count,
-        SUM(i.quantity) AS total_items
+    const sql = `
+      SELECT w.warehouse_id, w.name, w.location, w.capacity,
+             COALESCE(SUM(i.quantity),0) AS total_items
       FROM warehouse w
       LEFT JOIN inventory i ON w.warehouse_id = i.warehouse_id
-      GROUP BY w.warehouse_id, w.name, w.location, w.capacity
-      ORDER BY utilization_percent DESC
-    `);
+      GROUP BY w.warehouse_id
+    `;
+    return this.execute(sql);
   }
 
-  static async getPendingPayments() {
-    return this.executeSelect(`
-      SELECT 
-        p.payment_id,
-        p.order_id,
-        p.amount,
-        p.payment_date,
-        o.date AS order_date,
-        c.name AS customer_name,
-        c.email AS customer_email,
-        DATEDIFF(CURDATE(), DATE(o.date)) AS days_pending
-      FROM payment p
-      JOIN \`order\` o ON p.order_id = o.order_id
-      JOIN customer c ON o.customer_id = c.customer_id
-      WHERE p.status = 'Pending'
-      ORDER BY days_pending DESC
-    `);
-  }
-
+  // -----------------------------
+  // 9) Inventory Alerts
+  // -----------------------------
   static async getInventoryAlerts() {
-    return this.executeSelect(`SELECT * FROM vw_InventoryStatusAlerts ORDER BY alert_date DESC`);
-  }
-
-  static async getProductPriceAudit() {
-    return this.executeSelect(`SELECT * FROM vw_ProductPriceAudit ORDER BY change_date DESC`);
-  }
-
-  static async getDetailedOrderSummary() {
-    return this.executeSelect(`SELECT * FROM vw_DetailedOrderSummary ORDER BY order_date DESC`);
+    const sql = `
+      SELECT 
+        ia.alert_id,
+        ia.product_id,
+        p.name AS product_name,
+        ia.warehouse_id,
+        ia.quantity,
+        ia.reorder_level,
+        ia.alert_date
+      FROM inventory_alert_log ia
+      JOIN product p ON ia.product_id = p.product_id
+      ORDER BY ia.alert_date DESC
+      LIMIT 20
+    `;
+    return this.execute(sql);
   }
 }
 

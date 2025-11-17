@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { orderService } from '../services/orderService';
 import { customerService } from '../services/customerService';
 import { productService } from '../services/productService';
@@ -19,6 +20,7 @@ const Orders = () => {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchOrders();
@@ -45,7 +47,7 @@ const Orders = () => {
         customerService.getAllCustomers(),
         productService.getAllProducts(),
       ]);
-      
+
       if (customersRes.success) setCustomers(customersRes.data);
       if (productsRes.success) setProducts(productsRes.data);
     } catch (error) {
@@ -73,9 +75,21 @@ const Orders = () => {
 
   const handleSubmitOrder = async (formData) => {
     try {
-      await orderService.createOrder(formData);
-      alert('Order created successfully');
+      const response = await orderService.createOrder(formData);
+
+      if (!response.success) {
+        alert("Failed to create order");
+        return;
+      }
+
+      const orderId = response.data.order_id;
+
+      alert("Order created successfully! Redirecting to payment...");
       setCreateModalOpen(false);
+
+      // Correct redirect
+      navigate(`/payments/${orderId}`);
+
       fetchOrders();
     } catch (error) {
       console.error('Error creating order:', error);
@@ -96,7 +110,6 @@ const Orders = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 flex items-center">
@@ -110,50 +123,18 @@ const Orders = () => {
         </Button>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <Card>
-          <div className="text-center">
-            <p className="text-gray-600 text-sm">Total Orders</p>
-            <p className="text-3xl font-bold text-gray-900 mt-2">{orders.length}</p>
-          </div>
-        </Card>
-        <Card>
-          <div className="text-center">
-            <p className="text-gray-600 text-sm">Pending</p>
-            <p className="text-3xl font-bold text-yellow-600 mt-2">{statusCounts.pending}</p>
-          </div>
-        </Card>
-        <Card>
-          <div className="text-center">
-            <p className="text-gray-600 text-sm">Processing</p>
-            <p className="text-3xl font-bold text-blue-600 mt-2">{statusCounts.processing}</p>
-          </div>
-        </Card>
-        <Card>
-          <div className="text-center">
-            <p className="text-gray-600 text-sm">Shipped</p>
-            <p className="text-3xl font-bold text-primary-600 mt-2">{statusCounts.shipped}</p>
-          </div>
-        </Card>
-        <Card>
-          <div className="text-center">
-            <p className="text-gray-600 text-sm">Delivered</p>
-            <p className="text-3xl font-bold text-green-600 mt-2">{statusCounts.delivered}</p>
-          </div>
-        </Card>
+        <Card><p className="text-center text-gray-600 text-sm">Total Orders</p><p className="text-center text-3xl font-bold text-gray-900 mt-2">{orders.length}</p></Card>
+        <Card><p className="text-center text-gray-600 text-sm">Pending</p><p className="text-center text-3xl font-bold text-yellow-600 mt-2">{statusCounts.pending}</p></Card>
+        <Card><p className="text-center text-gray-600 text-sm">Processing</p><p className="text-center text-3xl font-bold text-blue-600 mt-2">{statusCounts.processing}</p></Card>
+        <Card><p className="text-center text-gray-600 text-sm">Shipped</p><p className="text-center text-3xl font-bold text-primary-600 mt-2">{statusCounts.shipped}</p></Card>
+        <Card><p className="text-center text-gray-600 text-sm">Delivered</p><p className="text-center text-3xl font-bold text-green-600 mt-2">{statusCounts.delivered}</p></Card>
       </div>
 
-      {/* Order List */}
       <Card>
-        {loading ? (
-          <Loader />
-        ) : (
-          <OrderList orders={orders} onViewDetails={handleViewDetails} />
-        )}
+        {loading ? <Loader /> : <OrderList orders={orders} onViewDetails={handleViewDetails} />}
       </Card>
 
-      {/* Create Order Modal */}
       <Modal
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
@@ -168,7 +149,6 @@ const Orders = () => {
         />
       </Modal>
 
-      {/* Order Details Modal */}
       <Modal
         isOpen={detailsModalOpen}
         onClose={() => setDetailsModalOpen(false)}
