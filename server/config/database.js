@@ -2,25 +2,18 @@
 // Final Version using MySQL2/Promise for better performance and syntax.
 
 const mysql = require('mysql2/promise');
-require('dotenv').config({ path: '../.env' }); // Ensure .env is loaded correctly
-
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 // Create a connection pool for efficient database handling
 const pool = mysql.createPool({
-  // Use environment variables for secure, flexible configuration
   host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 3306, // Default MySQL port
-  user: process.env.DB_USER || 'scm_app_user', 
-  password: process.env.DB_PASSWORD || 'DBMS@pesu2025',
-  database: process.env.DB_NAME || 'scm_portal',
-  
-  // Pool configuration for high transaction volume
+  port: process.env.DB_PORT || 3306,
+  user: process.env.DB_USER,           // remove || 'scm_app_user'
+  password: process.env.DB_PASSWORD,   // remove || 'DBMS@pesu2025'
+  database: process.env.DB_NAME,       // remove || 'scm_portal'
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
-
-  // Enable multiple statements for calling stored procedures/triggers in a single query
-  // NOTE: Use this sparingly and carefully due to SQL Injection risks.
-  multipleStatements: true 
+  multipleStatements: true
 });
 
 // Test connection and log status

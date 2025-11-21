@@ -1,9 +1,9 @@
 // client/src/pages/Payments.jsx
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import Loader from '../components/common/Loader';
 import Button from '../components/common/Button';
+import api from "../services/api";   // Correct API instance
 
 const Payments = () => {
   const { orderId } = useParams();
@@ -25,15 +25,20 @@ const Payments = () => {
   const fetchOrder = async () => {
     try {
       setLoading(true);
-      const res = await axios.get(`/api/orders/${orderId}`);
+
+      // FIX: Use api instead of axios
+      const res = await api.get(`/orders/${orderId}`);
+
       if (res.data?.success && res.data.data) {
         const backend = res.data.data;
+
         const items = (backend.order_lines || []).map(line => ({
           product_id: line.product_id,
           product_name: line.product_name,
           quantity: line.quantity,
           unit_price: line.price
         }));
+
         setOrder({
           order_id: backend.order_id,
           customer_name: backend.customer_name,
@@ -53,12 +58,16 @@ const Payments = () => {
 
   const handleFakePay = async () => {
     if (!order) return;
+
     try {
       setPaying(true);
       setError('');
+
+      // Simulate loading
       await new Promise(r => setTimeout(r, 800));
 
-      const res = await axios.post('/api/payments/pay', {
+      // FIX: Use api instead of axios
+      const res = await api.post('/payments/pay', {
         order_id: order.order_id,
         amount: order.total_amount,
         method: 'SIMULATED'

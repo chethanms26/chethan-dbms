@@ -2,19 +2,18 @@
 const db = require('../config/database');
 
 class Order {
-  // execute multi-statement queries
+  // execute multi-statement queries (returns whatever db.query returns)
   static async query(sql, params = []) {
     const [rows] = await db.query(sql, params);
     return rows;
   }
 
-  // execute single statement select
+  // execute single statement select/exec
   static async execute(sql, params = []) {
     const [rows] = await db.execute(sql, params);
     return rows;
   }
 
-  // Get all orders - ensure use of order_date column aliased to date
   static async getAll() {
     const sql = `
       SELECT 
@@ -36,7 +35,6 @@ class Order {
     return this.execute(sql);
   }
 
-  // Get order by id - returns combined object and maps order_lines -> order_lines
   static async getById(id) {
     const orderSql = `
       SELECT 
@@ -81,7 +79,6 @@ class Order {
     const [ship] = await db.execute(shipmentSql, [id]);
     const [pay] = await db.execute(paymentSql, [id]);
 
-    // Format return object matching frontend expectations
     const order = {
       ...orderRows[0],
       order_lines: lines || [],
@@ -92,35 +89,129 @@ class Order {
     return order;
   }
 
-  // Create order using stored procedure (expects OUT parameter @order_id)
+  /**
+   * Create an order.
+   * Tries calling stored proc `place_order(customerId, priority, @out_order_id)`
+   * If response shape isn't as expected, falls back to a direct INSERT and returns { order_id }.
+   */
   static async create(customerId, priority = 'Medium') {
-    const sql = `
-      CALL place_order(?, ?, @out_order_id);
-      SELECT @out_order_id AS order_id;
+    try {
+      // Attempt stored-proc call (multi-statement)
+      const sql = `
+        CALL place_order(?, ?, @out_order_id);
+        SELECT @out_order_id AS order_id;
+      `;
+      const results = await db.query(sql, [customerId, priority]);
+
+      // If results is an array-of-arrays (multi-statement), try to extract select result
+      // MySQL2 commonly returns an array where the last element contains the SELECT result.
+      if (Array.isArray(results)) {
+        // find the element that contains the order_id
+        for (const r of results) {
+          if (Array.isArray(r) && r[0] && r[0].order_id != null) {
+            return r[0]; // { order_id: 123 }
+          }
+          // sometimes SELECT returns [ { order_id: X } ] directly as results[1]
+          if (r && r.order_id != null) {
+            return r;
+          }
+        }
+      }
+
+      // If not found, attempt to inspect common shapes:
+      if (results && results.length >= 2) {
+        const possibleSelect = results[results.length - 1];
+        if (Array.isArray(possibleSelect) && possibleSelect[0] && possibleSelect[0].order_id != null) {
+          return possibleSelect[0];
+        }
+      }
+
+      // Fallback: stored-proc didn't return expected value. Fall back to simple INSERT.
+    } catch (err) {
+      // swallow and fallback to INSERT (but log)
+      console.warn('place_order proc call failed or returned unexpected shape — falling back to INSERT. Error:', err.message);
+    }
+
+    // FALLBACK INSERT (no stored-proc)
+    const insertSql = `
+      INSERT INTO \`order\` (customer_id, priority, status, order_date, total_amount)
+      VALUES (?, ?, 'Pending', NOW(), 0)
     `;
-    const results = await db.query(sql, [customerId, priority]);
-    // results: [ [resultSetsFromCALL], [selectResult] ] - MySQL2 returns array-of-arrays
-    // The SELECT result should be in results[1]
-    const selectResult = results[1];
-    const idRow = Array.isArray(selectResult) && selectResult[0];
-    return idRow || null;
+    const [result] = await db.execute(insertSql, [customerId, priority]);
+    if (result && result.insertId) {
+      return { order_id: result.insertId };
+    }
+    return null;
   }
 
-  // Add item using stored procedure add_order_item
+  /**
+   * Add item to an order.
+   * Uses stored-proc add_order_item if present; otherwise, does a direct insert into order_line and updates totals.
+   */
   static async addItem(orderId, productId, quantity) {
-    const sql = `CALL add_order_item(?, ?, ?)`;
-    await db.execute(sql, [orderId, productId, quantity]);
+  quantity = parseInt(quantity, 10);
+  if (!orderId || !productId || !Number.isInteger(quantity) || quantity <= 0) {
+    throw new Error('Invalid orderId/productId/quantity for addItem');
+  }
+
+  // Fetch product data + stock quantity from INVENTORY table
+  const sql = `
+    SELECT 
+      p.product_id,
+      p.unit_price,
+      COALESCE(SUM(i.quantity), 0) AS stock
+    FROM product p
+    LEFT JOIN inventory i ON p.product_id = i.product_id
+    WHERE p.product_id = ?
+    GROUP BY p.product_id
+    LIMIT 1
+  `;
+
+  const [prodRows] = await db.execute(sql, [productId]);
+
+  if (!prodRows || prodRows.length === 0) {
+    throw new Error(`Product ${productId} not found`);
+  }
+
+  const product = prodRows[0];
+  const unitPrice = Number(product.unit_price) || 0;
+
+    // Try stored-proc first
+    try {
+      const spSql = `CALL add_order_item(?, ?, ?)`;
+      await db.execute(spSql, [orderId, productId, quantity]);
+      return { success: true };
+    } catch (err) {
+      // fallback to manual insert
+      console.warn('add_order_item stored proc failed, falling back to manual insert. Error:', err.message);
+    }
+
+    // Manual insert into order_line
+    const insertLine = `
+      INSERT INTO order_line (order_id, product_id, quantity, price)
+      VALUES (?, ?, ?, ?)
+    `;
+    await db.execute(insertLine, [orderId, productId, quantity, unitPrice]);
+
+    // Update order total (sum lines)
+    const updateTotal = `
+      UPDATE \`order\`
+      SET total_amount = COALESCE((
+        SELECT SUM(ol.quantity * ol.price) FROM order_line ol WHERE ol.order_id = ?
+      ), 0)
+      WHERE order_id = ?
+    `;
+    await db.execute(updateTotal, [orderId, orderId]);
+
     return { success: true };
   }
 
-  // Update status
   static async updateStatus(id, status) {
     const sql = `UPDATE \`order\` SET status = ? WHERE order_id = ?`;
     await db.execute(sql, [status, id]);
     return this.getById(id);
   }
 
-  // statistics
   static async getStatistics() {
     const sql = `
       SELECT

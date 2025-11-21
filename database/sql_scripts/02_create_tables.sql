@@ -1,241 +1,154 @@
--- ============================================
--- 2. 02_create_tables.sql (Final - MySQL 8.x)
--- ============================================
-USE scm_portal;
-
--- Drop tables if they exist (in reverse dependency order)
-SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS `product_price_history`;
-DROP TABLE IF EXISTS `transaction`;
-DROP TABLE IF EXISTS payment;
-DROP TABLE IF EXISTS shipment;
-DROP TABLE IF EXISTS order_line;
-DROP TABLE IF EXISTS `order`;
-DROP TABLE IF EXISTS inventory;
-DROP TABLE IF EXISTS product;
-DROP TABLE IF EXISTS warehouse;
-DROP TABLE IF EXISTS customer;
-DROP TABLE IF EXISTS supplier;
-DROP TABLE IF EXISTS company;
-DROP TABLE IF EXISTS inventory_alert_log;
-DROP TABLE IF EXISTS db_user; -- NEW: For RBAC
-SET FOREIGN_KEY_CHECKS = 1;
-
--- 1. COMPANY Table
-CREATE TABLE company (
-    company_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    type VARCHAR(50),
-    address VARCHAR(255),
-    contact VARCHAR(100),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE company(
+company_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+name VARCHAR(100) NOT NULL,
+type VARCHAR(50),
+address VARCHAR(255),
+contact VARCHAR(100),
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. SUPPLIER Table
-CREATE TABLE supplier (
-    supplier_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    address VARCHAR(255),
-    contact VARCHAR(100),
-    phone_number VARCHAR(15),
-    company_id BIGINT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_supplier_company 
-        FOREIGN KEY (company_id) 
-        REFERENCES company(company_id) 
-        ON DELETE CASCADE
+CREATE TABLE supplier(
+supplier_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+name VARCHAR(100) NOT NULL,
+address VARCHAR(255),
+contact VARCHAR(100),
+phone_number VARCHAR(15),
+company_id BIGINT NOT NULL,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY(company_id) REFERENCES company(company_id) ON DELETE CASCADE
 );
 
--- 3. CUSTOMER Table
-CREATE TABLE customer (
-    customer_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    address VARCHAR(255),
-    email VARCHAR(100) UNIQUE NOT NULL,
-    phone_number VARCHAR(15),
-    company_id BIGINT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_customer_company 
-        FOREIGN KEY (company_id) 
-        REFERENCES company(company_id) 
-        ON DELETE CASCADE
+CREATE TABLE customer(
+customer_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+name VARCHAR(100) NOT NULL,
+address VARCHAR(255),
+email VARCHAR(100) UNIQUE NOT NULL,
+phone_number VARCHAR(15),
+company_id BIGINT NOT NULL,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY(company_id) REFERENCES company(company_id) ON DELETE CASCADE
 );
 
--- 4. WAREHOUSE Table
-CREATE TABLE warehouse (
-    warehouse_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    address VARCHAR(255),
-    location VARCHAR(100),
-    capacity INT CHECK (capacity > 0),
-    company_id BIGINT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_warehouse_company 
-        FOREIGN KEY (company_id) 
-        REFERENCES company(company_id) 
-        ON DELETE CASCADE
+CREATE TABLE warehouse(
+warehouse_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+name VARCHAR(100) NOT NULL,
+address VARCHAR(255),
+location VARCHAR(100),
+capacity INT CHECK(capacity>0),
+company_id BIGINT NOT NULL,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY(company_id) REFERENCES company(company_id) ON DELETE CASCADE
 );
 
--- 5. PRODUCT Table
-CREATE TABLE product (
-    product_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    description TEXT,
-    category VARCHAR(50),
-    unit_price DECIMAL(10,2) CHECK (unit_price > 0),
-    manufacturer VARCHAR(100),
-    availability BOOLEAN DEFAULT TRUE,
-    supplier_id BIGINT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_product_supplier 
-        FOREIGN KEY (supplier_id) 
-        REFERENCES supplier(supplier_id) 
-        ON DELETE CASCADE
+CREATE TABLE product(
+product_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+name VARCHAR(100) NOT NULL,
+description TEXT,
+category VARCHAR(50),
+unit_price DECIMAL(10,2) CHECK(unit_price>0),
+manufacturer VARCHAR(100),
+availability BOOLEAN DEFAULT TRUE,
+supplier_id BIGINT NOT NULL,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY(supplier_id) REFERENCES supplier(supplier_id) ON DELETE CASCADE
 );
 
--- 6. INVENTORY Table (Many-to-Many bridge)
-CREATE TABLE inventory (
-    product_id BIGINT NOT NULL,
-    warehouse_id BIGINT NOT NULL,
-    quantity INT DEFAULT 0 CHECK (quantity >= 0),
-    reorder_level INT DEFAULT 10,
-    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (product_id, warehouse_id),
-    CONSTRAINT fk_inventory_product 
-        FOREIGN KEY (product_id) 
-        REFERENCES product(product_id) 
-        ON DELETE CASCADE,
-    CONSTRAINT fk_inventory_warehouse 
-        FOREIGN KEY (warehouse_id) 
-        REFERENCES warehouse(warehouse_id) 
-        ON DELETE CASCADE
+CREATE TABLE inventory(
+product_id BIGINT NOT NULL,
+warehouse_id BIGINT NOT NULL,
+quantity INT DEFAULT 0 CHECK(quantity>=0),
+reorder_level INT DEFAULT 10,
+last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+PRIMARY KEY(product_id,warehouse_id),
+FOREIGN KEY(product_id) REFERENCES product(product_id) ON DELETE CASCADE,
+FOREIGN KEY(warehouse_id) REFERENCES warehouse(warehouse_id) ON DELETE CASCADE
 );
 
--- 7. ORDER Table 
-CREATE TABLE `order` (
-    order_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    total_amount DECIMAL(10,2) DEFAULT 0.00,
-    status VARCHAR(20) DEFAULT 'Pending' 
-        CHECK (status IN ('Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled')),
-    priority VARCHAR(10) DEFAULT 'Medium' 
-        CHECK (priority IN ('Low', 'Medium', 'High')),
-    customer_id BIGINT NOT NULL,
-    retailer_id BIGINT,
-    CONSTRAINT fk_order_customer 
-        FOREIGN KEY (customer_id) 
-        REFERENCES customer(customer_id) 
-        ON DELETE RESTRICT
+CREATE TABLE `order`(
+order_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+total_amount DECIMAL(10,2) DEFAULT 0.00,
+status VARCHAR(20) DEFAULT 'Pending' CHECK(status IN('Pending','Processing','Shipped','Delivered','Cancelled')),
+priority VARCHAR(10) DEFAULT 'Medium' CHECK(priority IN('Low','Medium','High')),
+customer_id BIGINT NOT NULL,
+retailer_id BIGINT,
+FOREIGN KEY(customer_id) REFERENCES customer(customer_id) ON DELETE RESTRICT
 );
 
--- 8. ORDER_LINE Table
-CREATE TABLE order_line (
-    orderline_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    order_id BIGINT NOT NULL,
-    product_id BIGINT NOT NULL,
-    quantity INT CHECK (quantity > 0),
-    price DECIMAL(10,2) CHECK (price > 0),
-    CONSTRAINT fk_orderline_order 
-        FOREIGN KEY (order_id) 
-        REFERENCES `order`(order_id) 
-        ON DELETE CASCADE,
-    CONSTRAINT fk_orderline_product 
-        FOREIGN KEY (product_id) 
-        REFERENCES product(product_id) 
-        ON DELETE RESTRICT
+CREATE TABLE order_line(
+orderline_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+order_id BIGINT NOT NULL,
+product_id BIGINT NOT NULL,
+quantity INT CHECK(quantity>0),
+price DECIMAL(10,2) CHECK(price>0),
+FOREIGN KEY(order_id) REFERENCES `order`(order_id) ON DELETE CASCADE,
+FOREIGN KEY(product_id) REFERENCES product(product_id) ON DELETE RESTRICT
 );
 
--- 9. SHIPMENT Table
-CREATE TABLE shipment (
-    shipment_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    order_id BIGINT UNIQUE NOT NULL,
-    status VARCHAR(20) DEFAULT 'Preparing' 
-        CHECK (status IN ('Preparing', 'In Transit', 'Delivered')),
-    carrier VARCHAR(100),
-    company_id BIGINT,
-    tracking_number VARCHAR(50) UNIQUE,
-    estimated_arrival DATE,
-    actual_arrival DATE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_shipment_order 
-        FOREIGN KEY (order_id) 
-        REFERENCES `order`(order_id) 
-        ON DELETE CASCADE,
-    CONSTRAINT fk_shipment_company 
-        FOREIGN KEY (company_id) 
-        REFERENCES company(company_id) 
-        ON DELETE SET NULL
+CREATE TABLE shipment(
+shipment_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+order_id BIGINT UNIQUE NOT NULL,
+status VARCHAR(20) DEFAULT 'Preparing' CHECK(status IN('Preparing','In Transit','Delivered')),
+carrier VARCHAR(100),
+company_id BIGINT,
+tracking_number VARCHAR(50) UNIQUE,
+estimated_arrival DATE,
+actual_arrival DATE,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY(order_id) REFERENCES `order`(order_id) ON DELETE CASCADE,
+FOREIGN KEY(company_id) REFERENCES company(company_id) ON DELETE SET NULL
 );
 
--- 10. PAYMENT Table
-CREATE TABLE payment (
-    payment_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    order_id BIGINT NOT NULL,
-    amount DECIMAL(10,2) CHECK (amount > 0),
-    type VARCHAR(20),
-    method VARCHAR(20) 
-        CHECK (method IN ('Credit Card', 'Debit Card', 'UPI', 'Cash', 'Net Banking')),
-    status VARCHAR(20) DEFAULT 'Pending' 
-        CHECK (status IN ('Pending', 'Completed', 'Failed')),
-    payment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_payment_order 
-        FOREIGN KEY (order_id) 
-        REFERENCES `order`(order_id) 
-        ON DELETE RESTRICT
+CREATE TABLE payment(
+payment_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+order_id BIGINT NOT NULL,
+amount DECIMAL(10,2) CHECK(amount>0),
+type VARCHAR(20),
+method VARCHAR(20) CHECK(method IN('Credit Card','Debit Card','UPI','Cash','Net Banking')),
+status VARCHAR(20) DEFAULT 'Pending' CHECK(status IN('Pending','Completed','Failed')),
+payment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY(order_id) REFERENCES `order`(order_id) ON DELETE RESTRICT
 );
 
--- 11. TRANSACTION Table
-CREATE TABLE `transaction` (
-    transaction_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    payment_id BIGINT NOT NULL,
-    date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    type VARCHAR(20),
-    amount DECIMAL(10,2),
-    remarks TEXT,
-    CONSTRAINT fk_transaction_payment 
-        FOREIGN KEY (payment_id) 
-        REFERENCES payment(payment_id) 
-        ON DELETE CASCADE
+CREATE TABLE `transaction`(
+transaction_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+payment_id BIGINT NOT NULL,
+date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+type VARCHAR(20),
+amount DECIMAL(10,2),
+remarks TEXT,
+FOREIGN KEY(payment_id) REFERENCES payment(payment_id) ON DELETE CASCADE
 );
 
--- 12. INVENTORY_ALERT_LOG (Required for Low Stock Trigger)
-CREATE TABLE inventory_alert_log (
-    alert_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    product_id BIGINT NOT NULL,
-    warehouse_id BIGINT NOT NULL,
-    quantity INT,
-    reorder_level INT,
-    alert_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (product_id, warehouse_id) REFERENCES inventory(product_id, warehouse_id)
+CREATE TABLE inventory_alert_log(
+alert_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+product_id BIGINT NOT NULL,
+warehouse_id BIGINT NOT NULL,
+quantity INT,
+reorder_level INT,
+alert_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY(product_id,warehouse_id) REFERENCES inventory(product_id,warehouse_id)
 );
 
--- 13. PRODUCT_PRICE_HISTORY Table (Auditing/Compliance)
-CREATE TABLE product_price_history (
-    history_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    product_id BIGINT NOT NULL,
-    old_price DECIMAL(10,2),
-    new_price DECIMAL(10,2),
-    change_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    changed_by VARCHAR(50) DEFAULT 'SYSTEM',
-    CONSTRAINT fk_price_history_product
-        FOREIGN KEY (product_id)
-        REFERENCES product(product_id)
-        ON DELETE CASCADE
+CREATE TABLE product_price_history(
+history_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+product_id BIGINT NOT NULL,
+old_price DECIMAL(10,2),
+new_price DECIMAL(10,2),
+change_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+changed_by VARCHAR(50) DEFAULT 'SYSTEM',
+FOREIGN KEY(product_id) REFERENCES product(product_id) ON DELETE CASCADE
 );
 
--- 14. DB_USER Table (For Authentication and Role-Based Access Control)
-CREATE TABLE db_user (
-    user_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL, 
-    name VARCHAR(100) NOT NULL,
-    role ENUM('ADMIN', 'CUSTOMER', 'SUPPLIER') NOT NULL,
-    customer_id BIGINT UNIQUE, 
-    supplier_id BIGINT UNIQUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    CONSTRAINT fk_user_customer FOREIGN KEY (customer_id) REFERENCES customer(customer_id) ON DELETE SET NULL,
-    CONSTRAINT fk_user_supplier FOREIGN KEY (supplier_id) REFERENCES supplier(supplier_id) ON DELETE SET NULL
+CREATE TABLE db_user(
+user_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+username VARCHAR(50) UNIQUE NOT NULL,
+password_hash VARCHAR(255) NOT NULL,
+name VARCHAR(100) NOT NULL,
+role ENUM('ADMIN','CUSTOMER','SUPPLIER') NOT NULL,
+customer_id BIGINT UNIQUE,
+supplier_id BIGINT UNIQUE,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY(customer_id) REFERENCES customer(customer_id) ON DELETE SET NULL,
+FOREIGN KEY(supplier_id) REFERENCES supplier(supplier_id) ON DELETE SET NULL
 );
-
-SELECT 'All tables created successfully!' AS result;
