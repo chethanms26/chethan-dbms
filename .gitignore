@@ -1,0 +1,56 @@
+# Node modules
+node_modules/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Dependency directories
+jspm_packages/
+
+# Optional cache directories
+.cache/
+.npm/
+.yarn/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+.tmp/
+
+# TypeScript
+*.tsbuildinfo
+
+# VSCode
+.vscode/
+
+# Coverage
+coverage/
+
+# Next.js / Nuxt / Vite / React builds (if applicable)
+.out/
+.next/
+.nuxt/
+.vite/
+
+# MongoDB dump
+dump/
+
+# Misc
+*.swp
+*.swo
